@@ -1,0 +1,5 @@
+{
+  "name": "Pew Track",
+  "description": "ProArms Tech Live Fire Tracking System - A web-based application to track live fire testing data, stoppages, and maintenance intervals.",
+  "requestFramePermissions": []
+}
