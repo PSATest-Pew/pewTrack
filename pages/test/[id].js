@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { Select, Input } from '@/components/ui/Form';
-import { cn, STOPPAGE_TYPES } from '@/lib/utils';
-import { Test, Stoppage } from '@/types';
+import { useRouter } from 'next/router';
+import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
+import { Select, Input } from '../../components/ui/Form';
+import { cn, STOPPAGE_TYPES } from '../../lib/utils';
+import { Test, Stoppage } from '../../types';
 import { AlertTriangle, CheckCircle, Wrench, Ruler, Droplets, Camera } from 'lucide-react';
 
 export default function ActiveTest() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const [test, setTest] = useState<Test | null>(null);
+  const router = useRouter();
+  const { id } = router.query;
+  const [test, setTest] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   // String State
   const [currentShooter, setCurrentShooter] = useState('Operator 1');
-  const [stoppages, setStoppages] = useState<Stoppage[]>([]);
-  const [selectedCell, setSelectedCell] = useState<{ mag: number; round: number } | null>(null);
+  const [stoppages, setStoppages] = useState([]);
+  const [selectedCell, setSelectedCell] = useState(null);
   const [isStoppageModalOpen, setIsStoppageModalOpen] = useState(false);
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
   // queue of actions that must be performed at the current round before progressing
-  const [pendingActions, setPendingActions] = useState<Array<'cleaning' | 'lubrication' | 'measurement'>>([]);
+  const [pendingActions, setPendingActions] = useState([]);
   // keep track of which actions have been completed for a given round
-  const [performedActions, setPerformedActions] = useState<Record<number, Array<'cleaning' | 'lubrication' | 'measurement'>>>({});
+  const [performedActions, setPerformedActions] = useState({});
 
   // Stoppage Form
   const [stoppageForm, setStoppageForm] = useState({ type: STOPPAGE_TYPES[0], comments: '' });
@@ -37,7 +37,9 @@ export default function ActiveTest() {
   });
 
   useEffect(() => {
-    fetchTest();
+    if (id) {
+      fetchTest();
+    }
   }, [id]);
 
   // Load persisted state from localStorage
@@ -63,13 +65,26 @@ export default function ActiveTest() {
 
   const fetchTest = async () => {
     try {
-      const res = await fetch(`/api/tests/${id}`);
-      if (!res.ok) throw new Error('Test not found');
-      const data = await res.json();
-      setTest(data);
+      // Mock data for demo
+      const mockTest = {
+        id: parseInt(id),
+        gun_model: 'M4 Carbine',
+        caliber: '5.56 NATO',
+        ammunition_type: 'M855 62gr',
+        mag_capacity: 30,
+        string_length: 30,
+        planned_rounds: 1000,
+        lubrication_interval: 300,
+        cleaning_interval: 500,
+        measurement_interval: 250,
+        status: 'active',
+        current_rounds: 120,
+        created_at: new Date().toISOString()
+      };
+      setTest(mockTest);
     } catch (error) {
       console.error(error);
-      navigate('/');
+      router.push('/');
     } finally {
       setLoading(false);
     }
@@ -89,7 +104,7 @@ export default function ActiveTest() {
 
   // Determine which actions are due at the current cumulative round
   const currentRounds = test?.current_rounds ?? 0;
-  const dueNow: Array<'cleaning' | 'lubrication' | 'measurement'> = [];
+  const dueNow = [];
   if (test && currentRounds > 0) {
     if (currentRounds % test.cleaning_interval === 0) dueNow.push('cleaning');
     if (currentRounds % test.lubrication_interval === 0) dueNow.push('lubrication');
@@ -120,10 +135,9 @@ export default function ActiveTest() {
 
   if (loading || !test) return <div className="p-8 text-white">Loading test data...</div>;
 
-  const handleCellClick = (mag: number, round: number) => {
+  const handleCellClick = (mag, round) => {
     if (isBlocked) return;
     setSelectedCell({ mag, round });
-    // ... rest of function
     const existing = stoppages.find(s => s.mag_number === mag && s.round_number === round);
     if (existing) {
       setStoppageForm({ type: existing.stoppage_type, comments: existing.comments });
@@ -135,8 +149,8 @@ export default function ActiveTest() {
 
   const saveStoppage = () => {
     if (!selectedCell) return;
-    
-    const newStoppage: Stoppage = {
+
+    const newStoppage = {
       mag_number: selectedCell.mag,
       round_number: selectedCell.round,
       stoppage_type: stoppageForm.type,
@@ -164,32 +178,19 @@ export default function ActiveTest() {
       );
       return;
     }
-    // ... rest of function
 
     try {
-      const payload = {
-        test_id: test.id,
-        shooter_name: currentShooter,
-        cumulative_rounds_start: test.current_rounds,
-        cumulative_rounds_end: test.current_rounds + test.string_length,
-        notes: '',
-        stoppages
-      };
+      // Mock API call for demo
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      const res = await fetch('/api/strings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // Update test data mock
+      setTest(prev => prev ? {
+        ...prev,
+        current_rounds: prev.current_rounds + prev.string_length
+      } : null);
 
-      if (!res.ok) throw new Error('Failed to save string');
-
-      // Refresh test data
-      await fetchTest();
       setStoppages([]); // Reset grid
-      
-      // Check for maintenance after string completion (simulated here, usually would check before next string start)
-      // For this prototype, we just refresh.
+
     } catch (error) {
       console.error(error);
       alert('Error saving string');
@@ -201,17 +202,8 @@ export default function ActiveTest() {
     const action = pendingActions[0];
 
     try {
-      await fetch('/api/measurements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          test_id: test.id,
-          cumulative_rounds: test.current_rounds,
-          type: action,
-          performed_by: maintenanceForm.performed_by || currentShooter,
-          ...maintenanceForm
-        })
-      });
+      // Mock API call for demo
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // record that this action was performed for this round
       setPerformedActions(prev => {
@@ -221,8 +213,6 @@ export default function ActiveTest() {
 
       // clear form fields
       setMaintenanceForm({ headspace: '', firing_pin_indent: '', trigger_weight: '', comments: '', performed_by: '' });
-
-      // closing modal handled by effect when pendingActions becomes empty (see other useEffect)
 
     } catch (error) {
       console.error(error);
@@ -241,8 +231,8 @@ export default function ActiveTest() {
             <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
               <span>Rounds: <span className="text-emerald-400 font-mono font-bold">{test.current_rounds}</span> / {test.planned_rounds}</span>
               <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-500 transition-all duration-500" 
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-500"
                   style={{ width: `${(test.current_rounds / test.planned_rounds) * 100}%` }}
                 />
               </div>
@@ -250,7 +240,7 @@ export default function ActiveTest() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Select 
+            <Select
               options={[{ value: 'Operator 1', label: 'Operator 1' }, { value: 'Operator 2', label: 'Operator 2' }]}
               value={currentShooter}
               onChange={(e) => setCurrentShooter(e.target.value)}
@@ -261,13 +251,11 @@ export default function ActiveTest() {
                 Maintenance needed: {pendingActions.join(', ')}
               </div>
             )}
-              {isMeasureUpcoming && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
-                  <Ruler className="w-3 h-3" /> Measure Due Soon
-                </div>
-              )}
-            </div>
-
+            {isMeasureUpcoming && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
+                <Ruler className="w-3 h-3" /> Measure Due Soon
+              </div>
+            )}
             <Button onClick={completeString} disabled={isBlocked}>
               Complete String
             </Button>
@@ -296,15 +284,15 @@ export default function ActiveTest() {
                     {Array.from({ length: roundsInThisMag }).map((_, roundIndex) => {
                       const roundNum = roundIndex + 1;
                       const hasStoppage = stoppages.some(s => s.mag_number === magNum && s.round_number === roundNum);
-                      
+
                       return (
                         <button
                           key={roundNum}
                           onClick={() => handleCellClick(magNum, roundNum)}
                           className={cn(
                             "w-8 h-10 rounded text-xs font-mono font-medium transition-all duration-150 flex items-center justify-center border",
-                            hasStoppage 
-                              ? "bg-red-500/20 border-red-500 text-red-500 hover:bg-red-500/30" 
+                            hasStoppage
+                              ? "bg-red-500/20 border-red-500 text-red-500 hover:bg-red-500/30"
                               : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 hover:border-zinc-500"
                           )}
                         >
@@ -365,7 +353,7 @@ export default function ActiveTest() {
         }
       >
         <div className="space-y-6">
-              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
+          <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
             <p className="text-zinc-300 mb-2">Maintenance required before proceeding:</p>
             <ul className="list-disc list-inside text-emerald-400 font-medium space-y-1">
               <li className="capitalize">{pendingActions[0]}</li>
@@ -373,7 +361,6 @@ export default function ActiveTest() {
           </div>
 
           <div className="space-y-4">
-            {/* no dropdown; we render fields for the specific pending action */}
             {pendingActions[0] === 'measurement' && (
               <div className="grid grid-cols-3 gap-4">
                 <Input

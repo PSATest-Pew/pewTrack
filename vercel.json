@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "functions": {},
+  "env": {
+    "NO_DB": "true"
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/disabled"
+    }
+  ]
+}
