@@ -52,6 +52,7 @@ export function initDb() {
       test_id INTEGER NOT NULL,
       cumulative_rounds INTEGER NOT NULL,
       type TEXT NOT NULL, -- 'measurement', 'cleaning', 'lubrication'
+      performed_by TEXT,
       headspace REAL,
       firing_pin_indent REAL,
       trigger_weight REAL,
@@ -59,7 +60,17 @@ export function initDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(test_id) REFERENCES tests(id)
     );
+
+    -- ensure older databases get the new column if missing
   `);
+
+  // migration: add performed_by column if not present
+  const info = db.prepare("PRAGMA table_info(measurements)").all();
+  const hasPerformedBy = info.some((col: any) => col.name === 'performed_by');
+  if (!hasPerformedBy) {
+    db.exec("ALTER TABLE measurements ADD COLUMN performed_by TEXT;");
+  }
+
   
   console.log('Database initialized');
 }

@@ -29,3 +29,14 @@ export interface StringData {
   notes: string;
   stoppages: Stoppage[];
 }
+
+export interface Measurement {
+  test_id: number;
+  cumulative_rounds: number;
+  type: string; // measurement, cleaning, lubrication
+  performed_by?: string;
+  headspace?: number;
+  firing_pin_indent?: number;
+  trigger_weight?: number;
+  comments?: string;
+}

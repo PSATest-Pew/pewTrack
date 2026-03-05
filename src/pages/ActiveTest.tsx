@@ -19,18 +19,21 @@ export default function ActiveTest() {
   const [selectedCell, setSelectedCell] = useState<{ mag: number; round: number } | null>(null);
   const [isStoppageModalOpen, setIsStoppageModalOpen] = useState(false);
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
-  const [maintenanceType, setMaintenanceType] = useState<'cleaning' | 'lubrication' | 'measurement' | null>(null);
-  const [maintenancePerformedAtRound, setMaintenancePerformedAtRound] = useState<number | null>(null);
+  // queue of actions that must be performed at the current round before progressing
+  const [pendingActions, setPendingActions] = useState<Array<'cleaning' | 'lubrication' | 'measurement'>>([]);
+  // keep track of which actions have been completed for a given round
+  const [performedActions, setPerformedActions] = useState<Record<number, Array<'cleaning' | 'lubrication' | 'measurement'>>>({});
 
   // Stoppage Form
   const [stoppageForm, setStoppageForm] = useState({ type: STOPPAGE_TYPES[0], comments: '' });
 
-  // Maintenance Form
+  // Maintenance Form (used for any of the three action types)
   const [maintenanceForm, setMaintenanceForm] = useState({
     headspace: '',
     firing_pin_indent: '',
     trigger_weight: '',
-    comments: ''
+    comments: '',
+    performed_by: ''
   });
 
   useEffect(() => {
@@ -63,20 +66,36 @@ export default function ActiveTest() {
   const isLubeUpcoming = test ? (roundsAtEndOfString > 0 && roundsAtEndOfString % test.lubrication_interval === 0) : false;
   const isMeasureUpcoming = test ? (roundsAtEndOfString > 0 && roundsAtEndOfString % test.measurement_interval === 0) : false;
 
-  // Check for IMMEDIATE blocking intervals (Must be done before starting string)
-  const isCleaningDueNow = test ? (test.current_rounds > 0 && test.current_rounds % test.cleaning_interval === 0) : false;
-  const isLubeDueNow = test ? (test.current_rounds > 0 && test.current_rounds % test.lubrication_interval === 0) : false;
-  const isMeasureDueNow = test ? (test.current_rounds > 0 && test.current_rounds % test.measurement_interval === 0) : false;
+  // Determine which actions are due at the current cumulative round
+  const currentRounds = test?.current_rounds ?? 0;
+  const dueNow: Array<'cleaning' | 'lubrication' | 'measurement'> = [];
+  if (test && currentRounds > 0) {
+    if (currentRounds % test.cleaning_interval === 0) dueNow.push('cleaning');
+    if (currentRounds % test.lubrication_interval === 0) dueNow.push('lubrication');
+    if (currentRounds % test.measurement_interval === 0) dueNow.push('measurement');
+  }
 
-  const isBlocked = (isCleaningDueNow || isLubeDueNow || isMeasureDueNow) 
-    && !maintenanceType 
-    && maintenancePerformedAtRound !== test?.current_rounds;
+  // filter out already-performed actions for this round
+  const performedThisRound = performedActions[currentRounds] || [];
+  const remainingActions = dueNow.filter(act => !performedThisRound.includes(act));
 
+  // if there are remaining actions, we are blocked
+  const isBlocked = remainingActions.length > 0;
+
+  // whenever remainingActions updates, open the modal if something is pending
   useEffect(() => {
-    if (isBlocked && !isMaintenanceModalOpen) {
+    setPendingActions(remainingActions);
+    if (remainingActions.length > 0 && !isMaintenanceModalOpen) {
       setIsMaintenanceModalOpen(true);
     }
-  }, [isBlocked]);
+  }, [remainingActions]);
+
+  // close modal once pending queue is empty
+  useEffect(() => {
+    if (pendingActions.length === 0 && isMaintenanceModalOpen) {
+      setIsMaintenanceModalOpen(false);
+    }
+  }, [pendingActions, isMaintenanceModalOpen]);
 
   if (loading || !test) return <div className="p-8 text-white">Loading test data...</div>;
 
@@ -119,7 +138,9 @@ export default function ActiveTest() {
 
   const completeString = async () => {
     if (isBlocked) {
-      alert("Maintenance required before proceeding.");
+      alert(
+        "Maintenance required before proceeding:\n" + pendingActions.join(', ')
+      );
       return;
     }
     // ... rest of function
@@ -155,23 +176,33 @@ export default function ActiveTest() {
   };
 
   const handleMaintenanceSubmit = async () => {
+    if (!test) return;
+    const action = pendingActions[0];
+
     try {
       await fetch('/api/measurements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           test_id: test.id,
-          cumulative_rounds: test.current_rounds, // Logged at current state
-          type: maintenanceType,
+          cumulative_rounds: test.current_rounds,
+          type: action,
+          performed_by: maintenanceForm.performed_by || currentShooter,
           ...maintenanceForm
         })
       });
-      setIsMaintenanceModalOpen(false);
-      if (test) {
-        setMaintenancePerformedAtRound(test.current_rounds);
-      }
-      setMaintenanceType(null); // Clear block
-      // In a real app, we'd track that this specific interval was cleared.
+
+      // record that this action was performed for this round
+      setPerformedActions(prev => {
+        const arr = prev[test.current_rounds] ? [...prev[test.current_rounds], action] : [action];
+        return { ...prev, [test.current_rounds]: arr };
+      });
+
+      // clear form fields
+      setMaintenanceForm({ headspace: '', firing_pin_indent: '', trigger_weight: '', comments: '', performed_by: '' });
+
+      // closing modal handled by effect when pendingActions becomes empty (see other useEffect)
+
     } catch (error) {
       console.error(error);
     }
@@ -204,13 +235,11 @@ export default function ActiveTest() {
               onChange={(e) => setCurrentShooter(e.target.value)}
               className="w-40"
             />
-            
-            {/* Maintenance Indicators */}
-            <div className="flex gap-2">
-              {isCleaningUpcoming && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
-                  <Wrench className="w-3 h-3" /> Clean Due Soon
-                </div>
+            {isBlocked && (
+              <div className="text-red-400 text-sm font-bold">
+                Maintenance needed: {pendingActions.join(', ')}
+              </div>
+            )
               )}
               {isMeasureUpcoming && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
@@ -219,7 +248,7 @@ export default function ActiveTest() {
               )}
             </div>
 
-            <Button onClick={completeString} disabled={isBlocked && false /* Allow override for prototype */}>
+            <Button onClick={completeString} disabled={isBlocked}>
               Complete String
             </Button>
           </div>
@@ -310,35 +339,22 @@ export default function ActiveTest() {
         onClose={() => {}} // Prevent closing without action
         title="Maintenance Required"
         footer={
-          <Button onClick={handleMaintenanceSubmit} disabled={!maintenanceType}>
+          <Button onClick={handleMaintenanceSubmit} disabled={pendingActions.length === 0}>
             Log Maintenance & Continue
           </Button>
         }
       >
         <div className="space-y-6">
-          <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
-            <p className="text-zinc-300 mb-2">The following maintenance intervals have been reached:</p>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
+            <p className="text-zinc-300 mb-2">Maintenance required before proceeding:</p>
             <ul className="list-disc list-inside text-emerald-400 font-medium space-y-1">
-              {isCleaningDueNow && <li>Cleaning ({test.cleaning_interval} rds)</li>}
-              {isLubeDueNow && <li>Lubrication ({test.lubrication_interval} rds)</li>}
-              {isMeasureDueNow && <li>Measurement ({test.measurement_interval} rds)</li>}
+              <li className="capitalize">{pendingActions[0]}</li>
             </ul>
           </div>
 
           <div className="space-y-4">
-            <Select
-              label="Action Performed"
-              options={[
-                { value: '', label: 'Select Action...' },
-                { value: 'cleaning', label: 'Cleaning' },
-                { value: 'lubrication', label: 'Lubrication' },
-                { value: 'measurement', label: 'Measurement' },
-              ]}
-              value={maintenanceType || ''}
-              onChange={(e) => setMaintenanceType(e.target.value as any)}
-            />
-
-            {maintenanceType === 'measurement' && (
+            {/* no dropdown; we render fields for the specific pending action */}
+            {pendingActions[0] === 'measurement' && (
               <div className="grid grid-cols-3 gap-4">
                 <Input
                   label="Headspace"
@@ -357,6 +373,19 @@ export default function ActiveTest() {
                 />
               </div>
             )}
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
+                Performed by
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                value={maintenanceForm.performed_by || currentShooter}
+                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, performed_by: e.target.value })}
+                placeholder="Name of person who performed action"
+              />
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">

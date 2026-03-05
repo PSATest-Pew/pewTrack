@@ -120,14 +120,14 @@ async function startServer() {
   // Log a measurement/maintenance action
   app.post("/api/measurements", (req, res) => {
     try {
-      const { test_id, cumulative_rounds, type, headspace, firing_pin_indent, trigger_weight, comments } = req.body;
+      const { test_id, cumulative_rounds, type, performed_by, headspace, firing_pin_indent, trigger_weight, comments } = req.body;
       
       const stmt = db.prepare(`
-        INSERT INTO measurements (test_id, cumulative_rounds, type, headspace, firing_pin_indent, trigger_weight, comments)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO measurements (test_id, cumulative_rounds, type, performed_by, headspace, firing_pin_indent, trigger_weight, comments)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(test_id, cumulative_rounds, type, headspace, firing_pin_indent, trigger_weight, comments);
+      stmt.run(test_id, cumulative_rounds, type, performed_by || null, headspace, firing_pin_indent, trigger_weight, comments);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to log measurement" });
