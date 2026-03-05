@@ -40,6 +40,27 @@ export default function ActiveTest() {
     fetchTest();
   }, [id]);
 
+  // Load persisted state from localStorage
+  useEffect(() => {
+    if (test) {
+      const key = `pewtrack-${test.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setPendingActions(parsed.pendingActions || []);
+        setPerformedActions(parsed.performedActions || {});
+      }
+    }
+  }, [test]);
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    if (test) {
+      const key = `pewtrack-${test.id}`;
+      localStorage.setItem(key, JSON.stringify({ pendingActions, performedActions }));
+    }
+  }, [test, pendingActions, performedActions]);
+
   const fetchTest = async () => {
     try {
       const res = await fetch(`/api/tests/${id}`);

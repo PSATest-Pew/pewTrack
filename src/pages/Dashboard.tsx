@@ -71,7 +71,12 @@ export default function Dashboard() {
                       </div>
                       <div className="text-xs text-zinc-500 uppercase tracking-wider mt-1">Rounds Fired</div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-white transition-colors" />
+                    <div className="flex items-center gap-2">
+                      <Link to={`/measurements/${test.id}`}>
+                        <Button variant="ghost" size="sm">Measurements</Button>
+                      </Link>
+                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-white transition-colors" />
+                    </div>
                   </div>
                 </div>
               </Link>
