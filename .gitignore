@@ -1,8 +1,37 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js
+.next/
+out/
+
+# Production
 build/
 dist/
-coverage/
+
+# Misc
 .DS_Store
 *.log
 .env*
 !.env.example
+
+# Server files (not needed for frontend demo)
+server.ts
+db.ts
+src/server/
+src/pages/server/
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
