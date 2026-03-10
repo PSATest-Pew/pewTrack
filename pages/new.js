@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { ArrowLeft, Crosshair } from 'lucide-react';
-import { CALIBERS, AMMO_TYPES } from '../lib/utils';
+import { CALIBERS, AMMO_TYPES, MEASUREMENT_FIELDS } from '../lib/utils';
 import { createTest } from '../lib/store';
 
 export default function NewTest() {
@@ -18,21 +18,28 @@ export default function NewTest() {
     cleaning_interval: '',
     measurement_interval: '',
   });
+  const [selectedMeasurements, setSelectedMeasurements] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const ammoOptions = formData.caliber ? (AMMO_TYPES[formData.caliber] || []) : [];
+  const hasMeasurements = selectedMeasurements.length > 0;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => {
       const next = { ...prev, [name]: value };
-      // Reset ammo type when caliber changes
       if (name === 'caliber' && prev.caliber !== value) {
         next.ammunition_type = '';
       }
       return next;
     });
+  };
+
+  const toggleMeasurement = (key) => {
+    setSelectedMeasurements((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -41,7 +48,15 @@ export default function NewTest() {
     setError('');
 
     try {
-      const newTest = createTest(formData);
+      const testData = {
+        ...formData,
+        measurement_fields: selectedMeasurements,
+      };
+      // If no measurement fields selected, clear the interval
+      if (!hasMeasurements) {
+        testData.measurement_interval = '0';
+      }
+      const newTest = createTest(testData);
       router.push(`/test/${newTest.id}`);
     } catch (err) {
       setError(err.message || 'Failed to create test');
@@ -108,9 +123,7 @@ export default function NewTest() {
                     >
                       <option value="">Select caliber</option>
                       {CALIBERS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
+                        <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
@@ -127,9 +140,7 @@ export default function NewTest() {
                     >
                       <option value="">{formData.caliber ? 'Select ammo' : 'Select caliber first'}</option>
                       {ammoOptions.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
+                        <option key={a} value={a}>{a}</option>
                       ))}
                     </select>
                   </div>
@@ -142,57 +153,100 @@ export default function NewTest() {
               <legend className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">
                 Test Parameters
               </legend>
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className={labelClass}>Mag Capacity</label>
-                    <input
-                      type="number"
-                      name="mag_capacity"
-                      value={formData.mag_capacity}
-                      onChange={handleChange}
-                      required
-                      min="1"
-                      placeholder="30"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>String Length</label>
-                    <input
-                      type="number"
-                      name="string_length"
-                      value={formData.string_length}
-                      onChange={handleChange}
-                      required
-                      min="1"
-                      placeholder="30"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Planned Rounds</label>
-                    <input
-                      type="number"
-                      name="planned_rounds"
-                      value={formData.planned_rounds}
-                      onChange={handleChange}
-                      required
-                      min="1"
-                      placeholder="1000"
-                      className={inputClass}
-                    />
-                  </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>Mag Capacity</label>
+                  <input
+                    type="number"
+                    name="mag_capacity"
+                    value={formData.mag_capacity}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                    placeholder="30"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>String Length</label>
+                  <input
+                    type="number"
+                    name="string_length"
+                    value={formData.string_length}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                    placeholder="30"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Planned Rounds</label>
+                  <input
+                    type="number"
+                    name="planned_rounds"
+                    value={formData.planned_rounds}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                    placeholder="1000"
+                    className={inputClass}
+                  />
                 </div>
               </div>
             </fieldset>
 
-            {/* Intervals */}
+            {/* Measurement Fields Selection */}
+            <fieldset>
+              <legend className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">
+                Measurement Fields
+              </legend>
+              <p className="text-xs text-zinc-600 mb-3">
+                Select which measurements to record at each measurement interval. If none are selected, measurement stops will not be required.
+              </p>
+              <div className="space-y-2">
+                {MEASUREMENT_FIELDS.map((field) => {
+                  const isChecked = selectedMeasurements.includes(field.key);
+                  return (
+                    <label
+                      key={field.key}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-white'
+                          : 'bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleMeasurement(field.key)}
+                        className="sr-only"
+                      />
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        isChecked ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-600'
+                      }`}>
+                        {isChecked && (
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium">{field.label}</span>
+                        <span className="text-xs text-zinc-600 ml-2">({field.unit.trim()})</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            {/* Maintenance Intervals */}
             <fieldset>
               <legend className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">
                 Maintenance Intervals (rounds)
               </legend>
-              <div className="grid grid-cols-3 gap-4">
+              <div className={`grid gap-4 ${hasMeasurements ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
                   <label className={labelClass}>Lubrication</label>
                   <input
@@ -219,20 +273,27 @@ export default function NewTest() {
                     className={inputClass}
                   />
                 </div>
-                <div>
-                  <label className={labelClass}>Measurement</label>
-                  <input
-                    type="number"
-                    name="measurement_interval"
-                    value={formData.measurement_interval}
-                    onChange={handleChange}
-                    required
-                    min="1"
-                    placeholder="250"
-                    className={inputClass}
-                  />
-                </div>
+                {hasMeasurements && (
+                  <div>
+                    <label className={labelClass}>Measurement</label>
+                    <input
+                      type="number"
+                      name="measurement_interval"
+                      value={formData.measurement_interval}
+                      onChange={handleChange}
+                      required
+                      min="1"
+                      placeholder="250"
+                      className={inputClass}
+                    />
+                  </div>
+                )}
               </div>
+              {!hasMeasurements && (
+                <p className="text-xs text-zinc-600 mt-2">
+                  Measurement interval will appear when you select at least one measurement field above.
+                </p>
+              )}
             </fieldset>
 
             <div className="flex gap-3 pt-2">

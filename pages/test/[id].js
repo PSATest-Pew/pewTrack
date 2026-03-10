@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Select, Input } from '../../components/ui/Form';
-import { cn, STOPPAGE_TYPES, OPERATORS } from '../../lib/utils';
-import { getTest, updateTest, addString, addStoppages, addMeasurement } from '../../lib/store';
-import { ArrowLeft, AlertTriangle, Ruler, Droplets, Sparkles, ClipboardCheck, Home } from 'lucide-react';
+import { cn, STOPPAGE_TYPES, OPERATORS, MEASUREMENT_FIELDS } from '../../lib/utils';
+import { getTest, updateTest, addString, addStoppages, addMeasurement, getStoppages } from '../../lib/store';
+import { ArrowLeft, AlertTriangle, Ruler, Droplets, Sparkles, ClipboardCheck, Home, TrendingUp } from 'lucide-react';
 
 export default function ActiveTest() {
   const router = useRouter();
@@ -21,6 +21,9 @@ export default function ActiveTest() {
   const [isStoppageModalOpen, setIsStoppageModalOpen] = useState(false);
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
   const [isConfirmCompleteOpen, setIsConfirmCompleteOpen] = useState(false);
+
+  // Lifetime stoppages for MRBS
+  const [lifetimeStoppages, setLifetimeStoppages] = useState([]);
 
   // Track which maintenance actions have been performed for each round count
   const [performedActions, setPerformedActions] = useState({});
@@ -47,6 +50,7 @@ export default function ActiveTest() {
     const data = getTest(id);
     if (data) {
       setTest(data);
+      setLifetimeStoppages(getStoppages(id));
     } else {
       router.push('/');
     }
@@ -62,7 +66,7 @@ export default function ActiveTest() {
         if (saved) setPerformedActions(JSON.parse(saved));
       } catch { /* ignore */ }
     }
-  }, [test?.id]); // only run on test id change, not test object
+  }, [test?.id]);
 
   // Persist performed actions
   useEffect(() => {
@@ -78,16 +82,33 @@ export default function ActiveTest() {
   const numMags = Math.ceil(totalRounds / magCapacity);
   const currentRounds = test?.current_rounds ?? 0;
 
+  // Measurement fields configured for this test
+  const testMeasurementFields = useMemo(() => {
+    const keys = test?.measurement_fields || [];
+    return MEASUREMENT_FIELDS.filter((f) => keys.includes(f.key));
+  }, [test?.measurement_fields]);
+
+  const hasMeasurements = testMeasurementFields.length > 0;
+
+  // MRBS: total lifetime rounds ÷ total lifetime stoppages
+  const totalLifetimeStoppages = lifetimeStoppages.length + stoppages.length;
+  const effectiveRounds = currentRounds; // rounds already completed (not counting current in-progress string)
+  const mrbs = totalLifetimeStoppages > 0
+    ? Math.round(effectiveRounds / totalLifetimeStoppages)
+    : effectiveRounds > 0 ? '∞' : '—';
+
   // What's due NOW at the current round count
   const dueNow = useMemo(() => {
     const actions = [];
     if (test && currentRounds > 0) {
       if (currentRounds % test.cleaning_interval === 0) actions.push('cleaning');
       if (currentRounds % test.lubrication_interval === 0) actions.push('lubrication');
-      if (currentRounds % test.measurement_interval === 0) actions.push('measurement');
+      if (hasMeasurements && test.measurement_interval > 0 && currentRounds % test.measurement_interval === 0) {
+        actions.push('measurement');
+      }
     }
     return actions;
-  }, [test, currentRounds]);
+  }, [test, currentRounds, hasMeasurements]);
 
   // What's been performed this round
   const performedThisRound = performedActions[currentRounds] || [];
@@ -99,19 +120,21 @@ export default function ActiveTest() {
   const upcomingWarnings = useMemo(() => {
     const warnings = [];
     if (test && roundsAfterString > 0) {
-      if (roundsAfterString % test.measurement_interval === 0) warnings.push('measurement');
+      if (hasMeasurements && test.measurement_interval > 0 && roundsAfterString % test.measurement_interval === 0) {
+        warnings.push('measurement');
+      }
       if (roundsAfterString % test.cleaning_interval === 0) warnings.push('cleaning');
       if (roundsAfterString % test.lubrication_interval === 0) warnings.push('lubrication');
     }
     return warnings;
-  }, [test, roundsAfterString]);
+  }, [test, roundsAfterString, hasMeasurements]);
 
   // Auto-open maintenance modal when blocked
   useEffect(() => {
     if (isBlocked && !isMaintenanceModalOpen && !loading) {
       setIsMaintenanceModalOpen(true);
     }
-  }, [isBlocked]); // intentionally minimal deps to avoid loops
+  }, [isBlocked]);
 
   if (loading || !test) return <div className="p-8 text-white">Loading test data...</div>;
 
@@ -190,6 +213,8 @@ export default function ActiveTest() {
     });
 
     setTest(updated);
+    // Update lifetime stoppages to include what we just saved
+    setLifetimeStoppages(getStoppages(test.id));
     setStoppages([]);
 
     if (isNowComplete) {
@@ -224,7 +249,6 @@ export default function ActiveTest() {
     setMaintenanceForm({ headspace: '', firing_pin_indent: '', trigger_weight: '', comments: '', performed_by: '' });
     showToast(`${action.charAt(0).toUpperCase() + action.slice(1)} logged`);
 
-    // Close modal if that was the last action
     const newRemaining = remainingActions.slice(1);
     if (newRemaining.length === 0) {
       setIsMaintenanceModalOpen(false);
@@ -254,7 +278,7 @@ export default function ActiveTest() {
       {/* Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10 shadow-md">
         <div className="max-w-7xl mx-auto">
-          {/* Top row: back + title */}
+          {/* Top row */}
           <div className="flex items-center gap-3 mb-3">
             <Link href="/">
               <span className="p-2 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer text-zinc-500 hover:text-zinc-300">
@@ -274,7 +298,7 @@ export default function ActiveTest() {
 
           {/* Bottom row: stats + controls */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               {/* Round counter */}
               <div className="flex items-center gap-3">
                 <span className="text-emerald-400 font-mono font-bold text-lg">{currentRounds}</span>
@@ -287,6 +311,17 @@ export default function ActiveTest() {
                 </div>
               </div>
 
+              {/* MRBS */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 rounded-lg border border-zinc-700">
+                <TrendingUp className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="text-xs text-zinc-500 uppercase tracking-wider">MRBS</span>
+                <span className={`font-mono font-bold text-sm ${
+                  mrbs === '∞' ? 'text-emerald-400' : mrbs === '—' ? 'text-zinc-600' : 'text-white'
+                }`}>
+                  {mrbs}
+                </span>
+              </div>
+
               {/* Upcoming warnings */}
               {upcomingWarnings.length > 0 && !isCompleted && (
                 <div className="flex items-center gap-1.5">
@@ -297,7 +332,6 @@ export default function ActiveTest() {
                     >
                       {actionIcon(w)}
                       <span className="hidden sm:inline">{actionLabel(w)}</span>
-                      <span className="sm:hidden">{w[0].toUpperCase()}</span>
                     </span>
                   ))}
                   <span className="text-xs text-zinc-600">after string</span>
@@ -342,7 +376,7 @@ export default function ActiveTest() {
             <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center text-zinc-400">
               This test is complete. All {test.planned_rounds} planned rounds have been fired.
               <Link href={`/measurements/${test.id}`}>
-                <span className="text-emerald-500 hover:underline ml-2 cursor-pointer">View measurement log →</span>
+                <span className="text-emerald-500 hover:underline ml-2 cursor-pointer">View test log →</span>
               </Link>
             </div>
           )}
@@ -413,14 +447,10 @@ export default function ActiveTest() {
           {/* Navigation footer */}
           <div className="mt-8 flex items-center justify-between text-sm">
             <Link href="/">
-              <span className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer">
-                ← Dashboard
-              </span>
+              <span className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer">← Dashboard</span>
             </Link>
             <Link href={`/measurements/${test.id}`}>
-              <span className="text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer">
-                Measurement Log →
-              </span>
+              <span className="text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer">Test Log →</span>
             </Link>
           </div>
         </div>
@@ -446,9 +476,7 @@ export default function ActiveTest() {
             onChange={(e) => setStoppageForm({ ...stoppageForm, type: e.target.value })}
           />
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
-              Comments
-            </label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Comments</label>
             <textarea
               className="w-full h-24 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               value={stoppageForm.comments}
@@ -488,9 +516,19 @@ export default function ActiveTest() {
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-zinc-400">Stoppages</span>
+              <span className="text-zinc-400">Stoppages this string</span>
               <span className={stoppages.length > 0 ? 'text-red-400 font-medium' : 'text-zinc-300'}>
                 {stoppages.length === 0 ? 'Clean string' : `${stoppages.length} recorded`}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm border-t border-zinc-700 pt-2">
+              <span className="text-zinc-400">Lifetime MRBS</span>
+              <span className="text-white font-mono font-bold">
+                {(() => {
+                  const newTotal = lifetimeStoppages.length + stoppages.length;
+                  const newRounds = currentRounds + test.string_length;
+                  return newTotal > 0 ? Math.round(newRounds / newTotal) : '∞';
+                })()}
               </span>
             </div>
           </div>
@@ -506,10 +544,7 @@ export default function ActiveTest() {
       {/* Maintenance Modal */}
       <Modal
         isOpen={isMaintenanceModalOpen}
-        onClose={() => {
-          // Allow closing only if not blocked (all actions performed)
-          if (!isBlocked) setIsMaintenanceModalOpen(false);
-        }}
+        onClose={() => { if (!isBlocked) setIsMaintenanceModalOpen(false); }}
         title="Maintenance Required"
         footer={
           <Button onClick={handleMaintenanceSubmit} disabled={remainingActions.length === 0}>
@@ -548,26 +583,18 @@ export default function ActiveTest() {
           {/* Form fields for current action */}
           {remainingActions.length > 0 && (
             <div className="space-y-4 pt-2 border-t border-zinc-800">
-              {remainingActions[0] === 'measurement' && (
-                <div className="grid grid-cols-3 gap-3">
-                  <Input
-                    label="Headspace"
-                    value={maintenanceForm.headspace}
-                    onChange={(e) => setMaintenanceForm({ ...maintenanceForm, headspace: e.target.value })}
-                    placeholder='e.g. 1.635'
-                  />
-                  <Input
-                    label="Pin Indent"
-                    value={maintenanceForm.firing_pin_indent}
-                    onChange={(e) => setMaintenanceForm({ ...maintenanceForm, firing_pin_indent: e.target.value })}
-                    placeholder='e.g. 0.065'
-                  />
-                  <Input
-                    label="Trigger Wt"
-                    value={maintenanceForm.trigger_weight}
-                    onChange={(e) => setMaintenanceForm({ ...maintenanceForm, trigger_weight: e.target.value })}
-                    placeholder='e.g. 5.2'
-                  />
+              {/* Only show measurement fields if this action is 'measurement' AND there are configured fields */}
+              {remainingActions[0] === 'measurement' && testMeasurementFields.length > 0 && (
+                <div className={`grid gap-3 ${testMeasurementFields.length === 1 ? 'grid-cols-1' : testMeasurementFields.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  {testMeasurementFields.map((field) => (
+                    <Input
+                      key={field.key}
+                      label={field.shortLabel || field.label}
+                      value={maintenanceForm[field.key] || ''}
+                      onChange={(e) => setMaintenanceForm({ ...maintenanceForm, [field.key]: e.target.value })}
+                      placeholder={field.placeholder}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -587,9 +614,7 @@ export default function ActiveTest() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  Notes
-                </label>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Notes</label>
                 <textarea
                   className="w-full h-20 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   value={maintenanceForm.comments}
