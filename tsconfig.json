@@ -30,6 +30,9 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "*.backup.ts",
+    "src.backup",
+    "lib/db.server.js"
   ]
 }

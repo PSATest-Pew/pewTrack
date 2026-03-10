@@ -1,8 +1,9 @@
-import db from '../../../lib/db';
-
 // Use in-memory storage if NO_DB is set
 const NO_DB = process.env.NO_DB === 'true';
-let inMemoryMeasurements: any[] = [];
+// db disabled for frontend-only mode
+if (!NO_DB) {
+}
+let inMemoryMeasurements = [];
 let measurementIdCounter = 1;
 
 export default async function handler(req, res) {

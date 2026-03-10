@@ -1,17 +1,14 @@
-import { initDb } from '../../../lib/db';
-import db from '../../../lib/db';
-
 // Use in-memory storage if NO_DB is set
 const NO_DB = process.env.NO_DB === 'true';
-let inMemoryTests: any[] = [];
-let inMemoryMeasurements: any[] = [];
+// db disabled for frontend-only mode
+if (!NO_DB) {
+  db = dbModule.default;
+  dbModule.initDb();
+}
+let inMemoryTests = [];
+let inMemoryMeasurements = [];
 let testIdCounter = 1;
 let measurementIdCounter = 1;
-
-// Initialize Database only if not NO_DB
-if (!NO_DB) {
-  initDb();
-}
 
 export default async function handler(req, res) {
   if (req.method === 'POST') {
