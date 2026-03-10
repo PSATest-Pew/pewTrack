@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "framework": "nextjs",
   "env": {
     "NO_DB": "true"
   }
